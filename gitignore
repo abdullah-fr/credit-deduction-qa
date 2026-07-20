@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Debug artifacts (screenshots + HTML dumps of staging pages — not meant for the repo)
+debug/
+
+# Local test upload files (may contain content you don't want public)
+Test Data/
+
+# Playwright
+playwright-report/
+test-results/
+
+# OS
+.DS_Store
+Thumbs.db
