@@ -1434,6 +1434,73 @@ def get_staging_url(url, domain):
     rebuilt = parsed._replace(netloc=staging_netloc)
     return rebuilt.geturl()
 
+def prompt_new_tool_wizard(base_url, domain):
+    """Interactively collect a brand-new tool's config — name, URL, input method, submit
+    button, result indicator — copy-pasted once by hand from live DOM inspection. Returns a
+    dict in the exact same shape as a configured_tools entry, so it runs through the main
+    loop identically to any pricing-page-discovered tool (no code changes needed) and gets
+    cached in site_mappings.json, so it's already there on every future run of this site.
+    Returns None if the person cancels (blank tool name)."""
+    cprint(f"\n  --- Add a new tool for {domain} ---", C.CYAN, bold=True)
+    name = input("  Tool name: ").strip()
+    if not name:
+        cprint("  (No name entered — cancelled, not adding a tool.)", C.YELLOW)
+        return None
+
+    default_url = f"{base_url.rstrip('/')}/{name.lower().replace(' ', '-')}"
+    url = input(f"  Tool URL (relative path or full URL) [{default_url}]: ").strip() or default_url
+    if not url.startswith("http"):
+        # Allow a bare relative path like "/my-tool" or "my-tool" typed by hand
+        url = f"{base_url.rstrip('/')}/{url.lstrip('/')}"
+
+    print("  Input method:")
+    print("    1. File upload")
+    print("    2. Typed/pasted text")
+    input_method = input("  Choice (1-2) [1]: ").strip() or "1"
+
+    file_type = "text"
+    file_input_sel = "input[type='file']"
+    text_input_conf = None
+
+    if input_method == "2":
+        text_input_sel = input("  Text input selector (paste the exact element's id/class, e.g. #input_text): ").strip()
+        sample_text = input("  Sample text to type in [Enter for a generic default]: ").strip()
+        if not sample_text:
+            sample_text = ("This is a sample paragraph used by our QA automation script to test "
+                            "whether the credit deduction system is working correctly for this tool.")
+        no_submit = input("  Does typing/pasting alone trigger the result — NO submit button to click? (y/n) [n]: ").strip().lower() == "y"
+        text_input_conf = {"selector": text_input_sel, "text": sample_text}
+        if no_submit:
+            text_input_conf["no_submit_needed"] = True
+    else:
+        file_type = input("  File type (image/pdf/word/excel/ppt/text) [text]: ").strip() or "text"
+        file_input_sel = input("  File input selector [input[type='file']]: ").strip() or "input[type='file']"
+
+    submit_sel = ""
+    if not (text_input_conf and text_input_conf.get("no_submit_needed")):
+        submit_sel = input("  Submit/Convert button selector (paste the exact element's id/class): ").strip()
+
+    result_sel = input("  Result-indicator selector (an element that ONLY appears once the result is generated): ").strip()
+
+    new_tool = {
+        "name": name,
+        "url": url,
+        "is_premium": True,
+        "cost": 1,
+        "file_type": file_type,
+        "selectors": {
+            "file_input": file_input_sel,
+            "submit_btn": submit_sel,
+            "result_indicator": result_sel
+        },
+        "skip": False
+    }
+    if text_input_conf:
+        new_tool["text_input"] = text_input_conf
+
+    cprint(f"  ✓ '{name}' added — runs in this session and is now saved for every future run.", C.GREEN)
+    return new_tool
+
 # ==============================================================================
 # Core CLI Automation Execution Flow
 # ==============================================================================
@@ -1747,12 +1814,37 @@ def run_cli_flow():
                 save_mappings(mappings)
 
             # Confirm extracted tools and URLs before running
-            cprint("\n  Tools to test:", C.CYAN, bold=True)
-            for idx, tool in enumerate(configured_tools):
-                skip_info = f" {C.YELLOW}[SKIP]{C.RESET}" if tool.get("skip") else ""
-                tool_url = get_staging_url(tool['url'], domain) if env == "staging" else tool['url']
-                cprint(f"    {idx + 1}. {tool['name']}: {C.DIM}{tool_url}{C.RESET}{skip_info}", C.WHITE)
-            
+            def print_tools_list():
+                cprint("\n  Tools to test:", C.CYAN, bold=True)
+                for idx, t in enumerate(configured_tools):
+                    skip_info = f" {C.YELLOW}[SKIP]{C.RESET}" if t.get("skip") else ""
+                    t_url = get_staging_url(t['url'], domain) if env == "staging" else t['url']
+                    cprint(f"    {idx + 1}. {t['name']}: {C.DIM}{t_url}{C.RESET}{skip_info}", C.WHITE)
+            print_tools_list()
+
+            # Offer to add a tool not already in this list — e.g. a new tool the site just
+            # launched that isn't on the pricing page yet, or one that was deliberately
+            # excluded above. Loops so more than one can be added in a row. Each addition is
+            # appended to configured_tools (runs in THIS session too) and saved to
+            # site_mappings.json immediately, so it's already there on every future run.
+            if not args.yes:
+                while True:
+                    add_choice = input(f"\n  Add a new tool for {domain}? (y/n) [n]: ").strip().lower()
+                    if add_choice != "y":
+                        break
+                    new_tool = prompt_new_tool_wizard(base_url, domain)
+                    if new_tool:
+                        configured_tools.append(new_tool)
+                        site_map = {
+                            "pricing_url": pricing_url,
+                            "account_url": account_url,
+                            "quantityCheckSupported": site_map.get("quantityCheckSupported", True) if isinstance(site_map, dict) else True,
+                            "tools": configured_tools
+                        }
+                        mappings[domain] = site_map
+                        save_mappings(mappings)
+                        print_tools_list()
+
             if not args.yes:
                 input(f"\n  {C.DIM}Press Enter to start running...{C.RESET}")
 
@@ -1853,7 +1945,7 @@ def run_cli_flow():
                     safe_goto(tool_tab, tool_url, label="tool page")
                     safe_wait_idle(tool_tab, label="Tool page")
                     
-                    text_input_override = TEXT_INPUT_OVERRIDES.get((domain, tool_name)) or TEXT_INPUT_OVERRIDES.get((domain, "default"))
+                    text_input_override = TEXT_INPUT_OVERRIDES.get((domain, tool_name)) or TEXT_INPUT_OVERRIDES.get((domain, "default")) or tool.get("text_input")
                     pre_action = tool.get("pre_action", [])
                     if isinstance(pre_action, str):  # backward-compat with old cached single-string format
                         pre_action = [s.strip() for s in pre_action.split(",") if s.strip()]
@@ -1942,6 +2034,17 @@ def run_cli_flow():
                         verbs = verbs + ["Extract"]
 
                         submit_candidates = []
+                        if submit_sel and submit_sel != "button#submitBtn":
+                            # A real, confirmed selector for THIS tool (either hand-entered via
+                            # the "add a new tool" wizard, or edited into site_mappings.json
+                            # directly) — trust it ahead of every guess below. Without this, a
+                            # brand-new tool on a domain with no SUBMIT_BTN_OVERRIDES entry would
+                            # fall straight to the generic verb-guessing / jsShadowRoot fallback
+                            # further down (which belongs to a different, unrelated site) before
+                            # ever trying the selector the user actually confirmed by hand.
+                            # "button#submitBtn" is excluded since it's just the wizard's
+                            # untouched placeholder default, not a real confirmed value.
+                            submit_candidates.append(submit_sel)
                         if domain == "jpgtotext.com":
                             # Confirmed via live DOM inspection: JPG to Text tools use
                             # id="extract-btn" ("Extract Now"), everything else on this site
@@ -1998,8 +2101,6 @@ def run_cli_flow():
                             "button#submitBtn", "button#convertBtn", "button#translateShadowBtn", "button.convertBtn",
                             "button[type='submit']", "input[type='submit']",
                         ]
-                        if submit_sel and submit_sel not in generic_fallbacks:
-                            generic_fallbacks.insert(0, submit_sel)
                         submit_candidates += generic_fallbacks
 
                         submit_btn, matched_btn_sel = find_clickable(tool_tab, submit_candidates, timeout_each_ms=3000, existence_ms=1500)
@@ -2018,12 +2119,20 @@ def run_cli_flow():
                     # Wait for conversion: smart polling for result elements
                     cprint(f"  │ Waiting for result...", C.DIM)
                     result_detected = False
+                    # A real, confirmed result-indicator selector for THIS specific tool (either
+                    # hand-entered via the "add a new tool" wizard, or edited into
+                    # site_mappings.json) — trusted ahead of everything else below.
+                    # ".result-box" is excluded since it's just the wizard's untouched
+                    # placeholder default, not a real confirmed value.
+                    tool_result_indicator = (tool.get("selectors", {}) or {}).get("result_indicator", "").strip()
+                    if tool_result_indicator == ".result-box":
+                        tool_result_indicator = ""
                     # High-confidence markers: real action buttons confirmed via live DOM
                     # inspection across all 9 tools on this site — these can only exist once a
                     # result actually exists (you can't "start over" from nothing), unlike a
                     # heading which can render as a loading placeholder the instant processing
                     # starts. These get a much shorter stability requirement below.
-                    HIGH_CONFIDENCE_SELECTORS = (RESULT_INDICATOR_OVERRIDES.get((domain, tool_name)) or RESULT_INDICATOR_OVERRIDES.get((domain, "default")) or []) + [
+                    HIGH_CONFIDENCE_SELECTORS = ([tool_result_indicator] if tool_result_indicator else []) + (RESULT_INDICATOR_OVERRIDES.get((domain, tool_name)) or RESULT_INDICATOR_OVERRIDES.get((domain, "default")) or []) + [
                         ".start-over-btn", "button.start-over", "#js-start-over", "#startAgain",  # "Start Over"/"Start Again" button
                         "text=Start Again", "text=Start Over", "text=Upload Another Image",  # redundant text fallback (jpgtotext.com's button shows "Upload Another Image" at desktop widths, "Start Over" only below the sm breakpoint)
                         ".js-reset-icon", ".reset-icon",                     # Image Translator's "Reset" control

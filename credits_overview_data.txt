@@ -158,17 +158,3 @@ AI Humanizer               -> 20 credits / word
 Text Summarizer            -> 1 credit / word
 
 =================================================================
-NOTES FOR THE SCRIPT
------------------------------------------------------------------
-- This file is the seed/initial version of the per-site cache described
-  in the Persistence section — load it in as the starting cache rather
-  than re-parsing these 10 pricing pages on first run.
-- editpad.org and prepostseo.com have NO credit-quantity data available
-  on their plans pages (checklist format only). For these two sites,
-  the script must ALWAYS run in deduction-only mode — verify credits
-  changed after tool use, never attempt to validate an exact amount,
-  even later when Live-environment quantity-checking is implemented for
-  the other 8 sites.
-- All other 8 sites have explicit per-tool/per-action credit values and
-  should follow the normal flow: deduction-only check on Staging,
-  deduction + exact quantity check on Live (Phase 2).
