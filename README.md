@@ -119,22 +119,6 @@ matter of adding data, not new control flow.
 
 ---
 
-## 🌐 Supported sites
-
-<table>
-<tr>
-<td>editpad.org</td><td>grammarcheck.ai</td><td>imagetotext.cc</td><td>imagetotext.info</td><td>imagetotext.io</td>
-</tr>
-<tr>
-<td>jpgtotext.com</td><td>ocr.best</td><td>paraphrasing.io</td><td>prepostseo.com</td><td>summarizer.org</td>
-</tr>
-</table>
-
-Per-site tool lists, resolved tool URLs, and per-tool credit rates are seeded from
-`credits_overview_data.txt` / `resolved_tool_urls.json` and cached to `site_mappings.json`
-on first run.
-
----
 
 ## ⚙️ Requirements
 
