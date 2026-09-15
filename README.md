@@ -159,19 +159,5 @@ debug_dumps/                 # auto-saved screenshots + HTML snippets on selecto
 
 ---
 
-## ⚠️ Known limitations
-
-- Selector overrides for some tools (e.g. grammarcheck.ai's text-input box) are
-  best-effort candidate lists rather than confirmed-exact selectors, and may need
-  tightening from a `debug_dumps/` dump on first run against a new site.
-- Exact-amount credit verification (vs. deduction-only) is currently only implemented
-  for sites that expose a documented per-tool credit rate.
-
----
-
-<div align="center">
-
-Personal QA tooling built and iterated against real staging/live sites as part of a
-broader automation portfolio. Not affiliated with or endorsed by the tested sites.
 
 </div>
